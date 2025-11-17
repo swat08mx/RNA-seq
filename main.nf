@@ -87,7 +87,7 @@ process SORTMERNA {
     script:
     """
     sortmerna --ref ${params.genome} --reads ${reads[0]} \\
-    --reads ${reads[1]} --aligned ${sample_id}_rRNA_reads --other ${sample_id_}non_rRNA_reads --fastx --paired_out
+    --reads ${reads[1]} --aligned ${sample_id}_rRNA_reads --other ${sample_id}_non_rRNA_reads --fastx --paired_out
 
     """
 }
@@ -112,7 +112,9 @@ process BUILD_STAR_INDEX {
          --genomeDir ${params.star_index} \\
          --genomeFastaFiles ${genome} \\
          --sjdbGTFfile ${gtf} \\
-         --sjdbOverhang 99
+         --sjdbOverhang 99 \\
+         --genomeSAsparseD 2 \\
+         --limitGenomeGenerateRAM 10781458698
     """
 }
 
@@ -134,6 +136,7 @@ process STAR_ALIGN {
         --genomeDir ${star_index} \\
         --readFilesIn ${reads[0]} ${reads[1]} \\
         --readFilesCommand zcat \\
+        --genomeSAsparseD 2 \\
         --outFileNamePrefix ${sample_id}_
     """
 }
@@ -175,25 +178,25 @@ process SALMON {
 
 process UMI_EXTRACT {
     tag "UMI extraction on ${sample_id}"
-    publishDir "${params.outdir}/UMI", mode: 'copy', pattern: "*.log"
+    publishDir "${params.outdir}/UMI", mode: 'copy'
 
     input:
     tuple val(sample_id), path(reads)
 
     output:
     tuple val(sample_id), path("${sample_id}_*_extracted.fastq.gz"), emit: UMI_extracted_reads
-    path ${sample_id}_whitelist.txt, emit: whitelist
+    path "${sample_id}_whitelist.txt", emit: whitelist
 
     script:
     """
     umi_tools extract \\
     --bc-pattern=CCCCCCCCNNNNNNNN \\
-    --stdin= ${reads[0]} \\
-    --stdout= ${sample_id}_1_extracted.fastq.gz \\
-    --read2-in= ${reads[1]} \\
-    --read2-out= ${sample_id}_2_extracted.fastq.gz \\
+    --stdin=${reads[0]} \\
+    --stdout=${sample_id}_1_extracted.fastq.gz \\
+    --read2-in=${reads[1]} \\
+    --read2-out=${sample_id}_2_extracted.fastq.gz \\
     --filter-cell-barcode \\
-    --whitelist= ${sample_id}_whitelist.txt
+    --whitelist=${sample_id}_whitelist.txt
     """
 }
 
@@ -210,7 +213,7 @@ process UMI_DEDUP {
     script:
     """
     umi_tools dedup \\
-    -I sorted_bam \\
+    -I ${sorted_bam} \\
     -S ${sample_id}.dedup.bam \\
     --paired
     """
@@ -264,6 +267,25 @@ process INDEX_BAM {
     samtools index ${sorted_bam}
     """
 }
+
+process STRINGTIE {
+    tag "Stringtie on ${sample_id}"
+    publishDir "${params.outdir}/stringtie", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(sorted_bam)
+    path gtf
+
+    output:
+    tuple val(sample_id), path("${sample_id}_assembled.gtf"), emit: assembled_gtf
+
+    script:
+    """
+    stringtie -p 8 -G ${gtf} -o ${sample_id}_assembled.gtf ${sorted_bam}
+
+    """
+}
+
 
 process FEATURECOUNTS {
     tag "Counting features for ${sample_id}"
@@ -343,14 +365,17 @@ workflow {
     // Sort BAM
     SORT_BAM(SAM_TO_BAM.out.bam)
 
-    // Index BAM
-    INDEX_BAM(SORT_BAM.out.sorted_bam)
-
     // Dedup and UMI removal
-    UMI_DEDUP(INDEX_BAM.out.indexed_bam)
+    UMI_DEDUP(SORT_BAM.out.sorted_bam)
+
+    // Index BAM
+    INDEX_BAM(UMI_DEDUP.out.dedup_bam)
+
+    // Stringtie quant
+    STRINGTIE(INDEX_BAM.out.indexed_bam, gtf_ch)
 
     // Count features
-    FEATURECOUNTS(UMI_DEDUP.out.dedup_bam, gtf_ch)
+    FEATURECOUNTS(INDEX_BAM.out.indexed_bam, gtf_ch)
 
     // Collect all QC outputs for MultiQC
     multiqc_input = FASTQC.out
