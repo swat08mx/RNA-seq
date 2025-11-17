@@ -18,9 +18,10 @@ nextflow.enable.dsl=2
 // Parameters
 params.reads = "/home/user1/RNA-seq/data/*_{1,2}.fastq.gz"
 params.genome = "/home/user1/test/reference/resources_broad_hg38_v0_Homo_sapiens_assembly38.fasta"
-params.gtf = "/home/user1/RNA-seq/rnaseq-pipeline/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
+params.gtf = "/home/user1/RNA-seq/rnaseqpipeline/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
 params.outdir = "results"
 params.star_index = "star_index"
+params.salmon_quant_index = "salmon_quant_index"
 
 // Print parameter summary
 log.info """\
@@ -118,6 +119,42 @@ process STAR_ALIGN {
         --outFileNamePrefix ${sample_id}_
     """
 }
+
+process SALMON_INDEX {
+    tag "Salmon index"
+    publishDir "${params.outdir}/${params.salmon_quant_index}", mode: 'copy', pattern: "*.log"
+
+    input:
+    path genome
+
+    output:
+    path "${params.salmon_quant_index}", emit: salmon_quant_index
+
+    script:
+    """
+    salmon index -t ${genome} -i ${params.salmon_quant_index}
+    """
+}
+
+
+process SALMON {
+    tag "Salmon quantification ${sample_id}"
+    publishDir "${params.outdir}/salmon_quant", mode: 'copy', pattern: "*.log"
+
+    input:
+    tuple val(sample_id), path(reads)
+    path salmon_quant_index
+
+    output:
+    path "salmon_quant", emit: salmon_quant
+
+    script:
+    """
+    salmon quant -i ${params.salmon_quant_index} -l A -1 ${reads[0]} -2 ${reads[1]} \\
+    --validateMappings -o salmon_quant
+    """
+}
+
 
 process SAM_TO_BAM {
     tag "Converting ${sample_id} SAM to BAM"
@@ -224,6 +261,12 @@ workflow {
     // Trim reads
     FASTP(reads_ch)
     
+    // Salmon index
+    SALMON_INDEX(genome_ch)
+
+    // Salmon quantify
+    SALMON(FASTP.out.trimmed_reads, SALMON_INDEX.out.salmon_quant_index)
+
     // Build STAR index
     BUILD_STAR_INDEX(genome_ch, gtf_ch)
     
