@@ -73,6 +73,24 @@ process FASTP {
     """
 }
 
+process SORTMERNA {
+    tag "Sorting Rb RNA ${sample_id}"
+    publishDir "${params.outdir}/SORTMERNA", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    path "aligned_out"
+    path "other_out"
+
+    script:
+    """
+    sortmerna --ref ${params.genome} --reads ${reads[0]} \\
+    --reads ${reads[1]} --aligned ${sample_id}_rRNA_reads --other ${sample_id_}non_rRNA_reads --fastx --paired_out
+
+    """
+}
 
 process BUILD_STAR_INDEX {
     tag "Building STAR index"
@@ -152,6 +170,49 @@ process SALMON {
     """
     salmon quant -i ${params.salmon_quant_index} -l A -1 ${reads[0]} -2 ${reads[1]} \\
     --validateMappings -o salmon_quant
+    """
+}
+
+process UMI_EXTRACT {
+    tag "UMI extraction on ${sample_id}"
+    publishDir "${params.outdir}/UMI", mode: 'copy', pattern: "*.log"
+
+    input:
+    tuple val(sample_id), path(reads)
+
+    output:
+    tuple val(sample_id), path("${sample_id}_*_extracted.fastq.gz"), emit: UMI_extracted_reads
+    path ${sample_id}_whitelist.txt, emit: whitelist
+
+    script:
+    """
+    umi_tools extract \\
+    --bc-pattern=CCCCCCCCNNNNNNNN \\
+    --stdin= ${reads[0]} \\
+    --stdout= ${sample_id}_1_extracted.fastq.gz \\
+    --read2-in= ${reads[1]} \\
+    --read2-out= ${sample_id}_2_extracted.fastq.gz \\
+    --filter-cell-barcode \\
+    --whitelist= ${sample_id}_whitelist.txt
+    """
+}
+
+process UMI_DEDUP {
+    tag "UMI deduping ${sample_id}"
+    publishDir "${params.outdir}/UMI_dedup", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(sorted_bam)
+
+    output:
+    tuple val(sample_id), path("${sample_id}.dedup.bam"), emit: dedup_bam
+
+    script:
+    """
+    umi_tools dedup \\
+    -I sorted_bam \\
+    -S ${sample_id}.dedup.bam \\
+    --paired
     """
 }
 
@@ -261,6 +322,9 @@ workflow {
     // Trim reads
     FASTP(reads_ch)
     
+    // UMI extraction
+    UMI_EXTRACT(FASTP.out.trimmed_reads)    
+    
     // Salmon index
     SALMON_INDEX(genome_ch)
 
@@ -272,7 +336,7 @@ workflow {
     
     // Align trimmed reads
     STAR_ALIGN(FASTP.out.trimmed_reads, BUILD_STAR_INDEX.out.index)
-    
+
     // Convert SAM to BAM
     SAM_TO_BAM(STAR_ALIGN.out.sam)
 
@@ -282,8 +346,11 @@ workflow {
     // Index BAM
     INDEX_BAM(SORT_BAM.out.sorted_bam)
 
+    // Dedup and UMI removal
+    UMI_DEDUP(INDEX_BAM.out.indexed_bam)
+
     // Count features
-    FEATURECOUNTS(INDEX_BAM.out.indexed_bam, gtf_ch)
+    FEATURECOUNTS(UMI_DEDUP.out.dedup_bam, gtf_ch)
 
     // Collect all QC outputs for MultiQC
     multiqc_input = FASTQC.out
