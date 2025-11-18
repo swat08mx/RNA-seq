@@ -295,11 +295,11 @@ process QUALIMAP {
     path gtf
 
     output:
-    path "${params.qualimap_outdir}/*"
+    path "${sample_id}_qualimap_outdir"
 
     script:
     """
-    qualimap rnaseq -bam ${bam} -gtf ${gtf} -outdir ${params.qualimap_outdir} -outformat HTML
+    qualimap rnaseq -bam ${bam} -gtf ${gtf} -outdir ${sample_id}_qualimap_outdir -outformat HTML
     """
 }
 
@@ -339,6 +339,42 @@ process BRACKEN {
 
     """
 }
+
+process KALLISTO_INDEX {
+    tag "Kallisto index on ${sample_id}"
+    publishDir "${params.outdir}/Kallisto_index", mode: 'copy'
+
+    input:
+    path(genome)
+
+    output:
+    path "transcripts.idx", emit: transcript_idx
+
+    script:
+    """
+    kallisto index -i transcripts.idx ${genome}
+
+    """
+}
+
+process KALLISTO_QUANT {
+    tag "Kallisto quant on ${sample_id}"
+    publishDir "${params.outdir}/Kallisto_quant", mode: 'copy'
+
+    input:
+    path(transcripts)
+    path(reads)
+
+    output:
+    path "${sample_id}_kallisto_output/*"
+
+    script:
+    """
+    kallisto quant -i ${transcripts} -o ${sample_id}_kallisto_output -t 8 ${reads[0]} ${reads[1]}
+
+    """
+}
+
 
 process STRINGTIE {
     tag "Stringtie on ${sample_id}"
@@ -423,6 +459,9 @@ workflow {
     // Salmon index
     SALMON_INDEX(genome_ch)
 
+    // Kallisto index
+    KALLISTO_INDEX(genome_ch)
+
     // Salmon quantify
     SALMON(FASTP.out.trimmed_reads, SALMON_INDEX.out.salmon_quant_index)
 
@@ -449,6 +488,9 @@ workflow {
 
     // Qualimap
     QUALIMAP(INDEX_BAM.out.indexed_bam, gtf_ch)
+
+    // Kallisto quant
+    KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
     
     // Kracken
     KRAKEN(reads_ch, kraken_db_ch)
