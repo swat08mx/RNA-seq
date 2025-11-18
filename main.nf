@@ -22,6 +22,8 @@ params.gtf = "/home/user1/RNA-seq/rnaseqpipeline/gencode.v49.chr_patch_hapl_scaf
 params.outdir = "results"
 params.star_index = "star_index"
 params.salmon_quant_index = "salmon_quant_index"
+params.kraken_db = "-------------------------------------------------------------------insert-----------------------------------------------------------"
+params.qualimap_outdir = "qualimap_outdir"
 
 // Print parameter summary
 log.info """\
@@ -268,6 +270,76 @@ process INDEX_BAM {
     """
 }
 
+process RSEQC {
+    tag "RSEQC ${sample_id}"
+    publishDir "${params.outdir}/RSeQC", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(bam)
+
+    output:
+    tuple val(sample_id), path("${sample_id}_bam_stats.txt")
+
+    script:
+    """
+    bam_stat.py -i ${bam} > ${sample_id}_bam_stats.txt
+    """
+}
+
+process QUALIMAP {
+    tag "QUALIMAP on ${sample_id}"
+    publishDir "${params.outdir}/Qualimap", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(bam)
+    path gtf
+
+    output:
+    path "${params.qualimap_outdir}/*"
+
+    script:
+    """
+    qualimap rnaseq -bam ${bam} -gtf ${gtf} -outdir ${params.qualimap_outdir} -outformat HTML
+    """
+}
+
+process KRAKEN {
+    tag "KRAKEN on ${sample_id}"
+    publishDir "${params.outdir}/Kraken", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(reads)
+    path kraken_db
+
+    output:
+    path "${sample_id}_kraken.out"
+    path "${sample_id}.report", emit: kraken_report
+
+    script:
+    """
+    kraken2 --db $kraken_db --threads 8 --paired --output ${sample_id}_kraken.out \\
+    --report ${sample_id}.report ${reads[0]} ${reads[1]}
+    """
+}
+
+process BRACKEN {
+    tag "BRACKEN on ${sample_id}"
+    publishDir "${params.outdir}/Bracken", mode: 'copy'
+
+    input:
+    path kraken_db
+    tuple val(sample_id), path(kraken_report)
+
+    output:
+    path "${sample_id}_species_abundance.bracken"
+
+    script:
+    """
+    bracken -d ${kraken_db} -i ${kraken_report} -o ${sample_id}_species_abundance.bracken -r 100 -l S
+
+    """
+}
+
 process STRINGTIE {
     tag "Stringtie on ${sample_id}"
     publishDir "${params.outdir}/stringtie", mode: 'copy'
@@ -337,7 +409,8 @@ workflow {
     reads_ch = Channel.fromFilePairs(params.reads, checkIfExists: true)
     genome_ch = params.genome ? Channel.fromPath(params.genome, checkIfExists: true) : Channel.empty()
     gtf_ch = Channel.fromPath(params.gtf, checkIfExists: true)
-
+    kraken_db_ch = Channel.fromPath(params.kraken_db, checkIfExists: true)
+    
     // FastQC on raw reads
     FASTQC(reads_ch)
     
@@ -370,6 +443,18 @@ workflow {
 
     // Index BAM
     INDEX_BAM(UMI_DEDUP.out.dedup_bam)
+
+    // RSeQC 
+    RSEQC(INDEX_BAM.out.indexed_bam)
+
+    // Qualimap
+    QUALIMAP(INDEX_BAM.out.indexed_bam, gtf_ch)
+    
+    // Kracken
+    KRAKEN(reads_ch, kraken_db_ch)
+
+    // Bracken
+    BRACKEN(kraken_db_ch, KRAKEN.out.kraken_report)
 
     // Stringtie quant
     STRINGTIE(INDEX_BAM.out.indexed_bam, gtf_ch)
