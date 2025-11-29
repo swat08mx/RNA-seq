@@ -16,13 +16,13 @@ nextflow.enable.dsl=2
 */
 
 // Parameters
-params.reads = "/home/user1/RNA-seq/data/*_{1,2}.fastq.gz"
-params.genome = "/home/user1/test/reference/resources_broad_hg38_v0_Homo_sapiens_assembly38.fasta"
-params.gtf = "/home/user1/RNA-seq/rnaseqpipeline/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
+params.reads = "/media/molmed/Analysis/swattik/RNAseq/data/*_{1,2}.fastq.gz"
+params.genome = "/media/molmed/Analysis/swattik/reference/resources_broad_hg38_v0_Homo_sapiens_assembly38.fasta"
+params.gtf = "/media/molmed/Analysis/swattik/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
 params.outdir = "results"
 params.star_index = "star_index"
 params.salmon_quant_index = "salmon_quant_index"
-params.kraken_db = "-------------------------------------------------------------------insert-----------------------------------------------------------"
+//params.kraken_db = "-------------------------------------------------------------------insert-----------------------------------------------------------"
 params.qualimap_outdir = "qualimap_outdir"
 
 // Print parameter summary
@@ -71,7 +71,7 @@ process FASTP {
     
     script:
     """
-    /home/user1/test/tools/fastp -i ${sample_id}_1.fastq.gz -o ${sample_id}_trimmed_1.fastq.gz -I ${sample_id}_2.fastq.gz -O ${sample_id}_trimmed_2.fastq.gz -V
+    fastp -i ${sample_id}_1.fastq.gz -o ${sample_id}_trimmed_1.fastq.gz -I ${sample_id}_2.fastq.gz -O ${sample_id}_trimmed_2.fastq.gz -V
     """
 }
 
@@ -445,7 +445,7 @@ workflow {
     reads_ch = Channel.fromFilePairs(params.reads, checkIfExists: true)
     genome_ch = params.genome ? Channel.fromPath(params.genome, checkIfExists: true) : Channel.empty()
     gtf_ch = Channel.fromPath(params.gtf, checkIfExists: true)
-    kraken_db_ch = Channel.fromPath(params.kraken_db, checkIfExists: true)
+    //kraken_db_ch = Channel.fromPath(params.kraken_db, checkIfExists: true)
     
     // FastQC on raw reads
     FASTQC(reads_ch)
@@ -493,10 +493,10 @@ workflow {
     KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
     
     // Kracken
-    KRAKEN(reads_ch, kraken_db_ch)
+    // KRAKEN(reads_ch, kraken_db_ch)
 
     // Bracken
-    BRACKEN(kraken_db_ch, KRAKEN.out.kraken_report)
+    // BRACKEN(kraken_db_ch, KRAKEN.out.kraken_report)
 
     // Stringtie quant
     STRINGTIE(INDEX_BAM.out.indexed_bam, gtf_ch)
