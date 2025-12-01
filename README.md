@@ -108,7 +108,6 @@ The pipeline assumes tools are available in your environment:
   SortMeRNA           rRNA removal (optional)
   Kraken2 / Bracken   Taxonomic classification (optional)
   UMI-tools           UMI extraction & deduplication
-
 ------------------------------------------------------------------------
 
 ## 🧬 Input Requirements
