@@ -199,22 +199,20 @@ process UMI_EXTRACT {
     """
 }
 
-process UMI_DEDUP {
-    tag "UMI deduping ${sample_id}"
-    publishDir "${params.outdir}/UMI_dedup", mode: 'copy'
+process DEDUP {
+    tag "Deduping ${sample_id}"
+    publishDir "${params.outdir}/Dedup", mode: 'copy'
 
     input:
     tuple val(sample_id), path(sorted_bam)
 
     output:
     tuple val(sample_id), path("${sample_id}.dedup.bam"), emit: dedup_bam
+    path("${sample_id}.marked_dup_metrics.txt")
 
     script:
     """
-    umi_tools dedup \\
-    -I ${sorted_bam} \\
-    -S ${sample_id}.dedup.bam \\
-    --paired
+    gatk MarkDuplicates -I ${sorted_bam} -O ${sample_id}.dedup.bam -M ${sample_id}.marked_dup_metrics.txt
     """
 }
 
@@ -259,7 +257,7 @@ process INDEX_BAM {
     tuple val(sample_id), path(sorted_bam)
     
     output:
-    tuple val(sample_id), path(sorted_bam), path("${sorted_bam}.bai"), emit: indexed_bam
+    tuple val(sample_id), path("${sorted_bam}.bai"), emit: indexed_file
     
     script:
     """
@@ -397,9 +395,9 @@ process FEATURECOUNTS {
     publishDir "${params.outdir}/featurecounts", mode: 'copy'
     
     input:
-    tuple val(sample_id), path(bam), path(bai)
     path gtf
-    
+    tuple val(sample_id), path(bam)
+        
     output:
     path "${sample_id}_counts.txt", emit: counts
     path "${sample_id}_counts.txt.summary", emit: summary
@@ -475,17 +473,17 @@ workflow {
     // Sort BAM
     SORT_BAM(SAM_TO_BAM.out.bam)
 
-    // Dedup and UMI removal
-    UMI_DEDUP(SORT_BAM.out.sorted_bam)
-
     // Index BAM
-    INDEX_BAM(UMI_DEDUP.out.dedup_bam)
+    INDEX_BAM(SORT_BAM.out.sorted_bam)
+
+    // Dedup
+    DEDUP(SORT_BAM.out.sorted_bam)
 
     // RSeQC 
-    RSEQC(INDEX_BAM.out.indexed_bam)
+    RSEQC(DEDUP.out.dedup_bam)
 
     // Qualimap
-    QUALIMAP(INDEX_BAM.out.indexed_bam, gtf_ch)
+    QUALIMAP(DEDUP.out.dedup_bam, gtf_ch)
 
     // Kallisto quant
     //KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
@@ -497,10 +495,10 @@ workflow {
     // BRACKEN(kraken_db_ch, KRAKEN.out.kraken_report)
 
     // Stringtie quant
-    STRINGTIE(INDEX_BAM.out.indexed_bam, gtf_ch)
+    STRINGTIE(DEDUP.out.dedup_bam, gtf_ch)
 
     // Count features
-    FEATURECOUNTS(INDEX_BAM.out.indexed_bam, gtf_ch)
+    FEATURECOUNTS(gtf_ch, DEDUP.out.dedup_bam)
 
     // Collect all QC outputs for MultiQC
     multiqc_input = FASTQC.out
