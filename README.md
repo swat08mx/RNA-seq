@@ -103,6 +103,10 @@ The pipeline assumes tools are available in your environment:
   Kraken2 / Bracken   Taxonomic classification (optional)
   UMI-tools           UMI extraction & deduplication
 
+### How to install the tools?
+
+    conda env create -f rnaseq.yml
+
 ------------------------------------------------------------------------
 
 ## 🧬 Input Requirements
