@@ -20,7 +20,7 @@ params.reads = "/media/molmed/Analysis/swattik/RNAseq/data/*_{1,2}.fastq.gz"
 params.genome = "/media/molmed/Analysis/swattik/reference/resources_broad_hg38_v0_Homo_sapiens_assembly38.fasta"
 params.gtf = "/media/molmed/Analysis/swattik/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
 params.outdir = "results"
-params.star_index = "star_index"
+params.star_index = "/media/molmed/Analysis/swattik/RNAseq/RNA-seq/star_index/"
 params.salmon_quant_index = "salmon_quant_index"
 //params.kraken_db = "-------------------------------------------------------------------insert-----------------------------------------------------------"
 params.qualimap_outdir = "qualimap_outdir"
@@ -125,9 +125,9 @@ process STAR_ALIGN {
     publishDir "${params.outdir}/aligned", mode: 'copy', pattern: "*.log"
     
     input:
-    tuple val(sample_id), path(reads)
     path star_index
-    
+    tuple val(sample_id), path(reads)
+        
     output:
     tuple val(sample_id), path("${sample_id}_Aligned.out.sam"), emit: sam
     path "${sample_id}_Log.final.out", emit: log
@@ -187,7 +187,6 @@ process UMI_EXTRACT {
 
     output:
     tuple val(sample_id), path("${sample_id}_*_extracted.fastq.gz"), emit: UMI_extracted_reads
-    path "${sample_id}_whitelist.txt", emit: whitelist
 
     script:
     """
@@ -197,8 +196,6 @@ process UMI_EXTRACT {
     --stdout=${sample_id}_1_extracted.fastq.gz \\
     --read2-in=${reads[1]} \\
     --read2-out=${sample_id}_2_extracted.fastq.gz \\
-    --filter-cell-barcode \\
-    --whitelist=${sample_id}_whitelist.txt
     """
 }
 
@@ -445,6 +442,7 @@ workflow {
     reads_ch = Channel.fromFilePairs(params.reads, checkIfExists: true)
     genome_ch = params.genome ? Channel.fromPath(params.genome, checkIfExists: true) : Channel.empty()
     gtf_ch = Channel.fromPath(params.gtf, checkIfExists: true)
+    star_index_ch = Channel.fromPath(params.star_index, checkIfExists: true)
     //kraken_db_ch = Channel.fromPath(params.kraken_db, checkIfExists: true)
     
     // FastQC on raw reads
@@ -460,16 +458,16 @@ workflow {
     SALMON_INDEX(genome_ch)
 
     // Kallisto index
-    KALLISTO_INDEX(genome_ch)
+    //KALLISTO_INDEX(genome_ch)
 
     // Salmon quantify
-    SALMON(FASTP.out.trimmed_reads, SALMON_INDEX.out.salmon_quant_index)
+    SALMON(UMI_EXTRACT.out.UMI_extracted_reads, SALMON_INDEX.out.salmon_quant_index)
 
     // Build STAR index
-    BUILD_STAR_INDEX(genome_ch, gtf_ch)
+    //BUILD_STAR_INDEX(genome_ch, gtf_ch)
     
     // Align trimmed reads
-    STAR_ALIGN(FASTP.out.trimmed_reads, BUILD_STAR_INDEX.out.index)
+    STAR_ALIGN(star_index_ch, UMI_EXTRACT.out.UMI_extracted_reads)
 
     // Convert SAM to BAM
     SAM_TO_BAM(STAR_ALIGN.out.sam)
@@ -490,7 +488,7 @@ workflow {
     QUALIMAP(INDEX_BAM.out.indexed_bam, gtf_ch)
 
     // Kallisto quant
-    KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
+    //KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
     
     // Kracken
     // KRAKEN(reads_ch, kraken_db_ch)
