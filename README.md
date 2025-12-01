@@ -86,29 +86,31 @@ After a successful run, results are organized under `results/`:
 
     nextflow run main.nf   --reads "/path/to/*_{1,2}.fastq.gz"   --genome "/path/to/genome.fasta"   --gtf "/path/to/annotation.gtf"   --outdir "results"
 
-------------------------------------------------------------------------
+
+
+
 
 ## 📦 Software Requirements
 
 The pipeline assumes tools are available in your environment:
 
-  Tool                Purpose
-  ------------------- -------------------------------------
-  FastQC              Read quality control
-  Fastp               Trimming
-  STAR                Alignment
-  Salmon              Quantification
-  Kallisto            Pseudoalignment
-  SAMtools            BAM operations
-  featureCounts       Gene-level quantification
-  StringTie           Transcript assembly
-  RSeQC               RNA-seq QC
-  Qualimap            Mapping QC
-  MultiQC             Summary reports
-  SortMeRNA           rRNA removal (optional)
-  Kraken2 / Bracken   Taxonomic classification (optional)
-  UMI-tools           UMI extraction & deduplication
-------------------------------------------------------------------------
+| Tool              | Purpose                          |
+| ----------------- | -------------------------------- |
+| FastQC            | Read quality control             |
+| Fastp             | Trimming                         |
+| STAR              | Alignment                        |
+| Salmon            | Quantification                   |
+| Kallisto          | Pseudoalignment                  |
+| SAMtools          | BAM operations                   |
+| featureCounts     | Gene-level quantification        |
+| StringTie         | Transcript assembly              |
+| RSeQC             | RNA-seq QC                       |
+| Qualimap          | Mapping QC                       |
+| MultiQC           | Summary reports                  |
+| SortMeRNA         | rRNA removal (optional)          |
+| Kraken2 / Bracken | Taxonomic classification (opt.)  |
+| UMI-tools         | UMI extraction & deduplication   |
+
 
 ## 🧬 Input Requirements
 
