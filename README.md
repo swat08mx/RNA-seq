@@ -70,6 +70,12 @@ After a successful run, results are organized under `results/`:
 
 ------------------------------------------------------------------------
 
+## Install the environment with the tools
+
+### How to install the tools?
+
+    conda env create -f rnaseq.yml
+
 ## ⚙️ Pipeline Execution
 
 ### Basic Run
@@ -102,10 +108,6 @@ The pipeline assumes tools are available in your environment:
   SortMeRNA           rRNA removal (optional)
   Kraken2 / Bracken   Taxonomic classification (optional)
   UMI-tools           UMI extraction & deduplication
-
-### How to install the tools?
-
-    conda env create -f rnaseq.yml
 
 ------------------------------------------------------------------------
 
