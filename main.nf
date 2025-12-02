@@ -21,9 +21,10 @@ params.genome = "/media/molmed/Analysis/swattik/reference/resources_broad_hg38_v
 params.gtf = "/media/molmed/Analysis/swattik/gencode.v49.chr_patch_hapl_scaff.annotation.gtf"
 params.outdir = "results"
 params.star_index = "/media/molmed/Analysis/swattik/RNAseq/RNA-seq/star_index/"
-params.salmon_quant_index = "salmon_quant_index"
+params.salmon_quant_index = "/media/molmed/Analysis/swattik/RNAseq/RNA-seq/salmon_quant_index/"
 //params.kraken_db = "-------------------------------------------------------------------insert-----------------------------------------------------------"
 params.qualimap_outdir = "qualimap_outdir"
+params.kallisto_index = "/media/molmed/Analysis/swattik/RNAseq/RNA-seq/kallisto_index/Homo_sapiens_kallisto_index.idx"
 
 // Print parameter summary
 log.info """\
@@ -122,7 +123,7 @@ process BUILD_STAR_INDEX {
 
 process STAR_ALIGN {
     tag "Aligning ${sample_id}"
-    publishDir "${params.outdir}/aligned", mode: 'copy', pattern: "*.log"
+    publishDir "${params.outdir}/aligned", mode: 'copy'
     
     input:
     path star_index
@@ -357,8 +358,8 @@ process KALLISTO_QUANT {
     publishDir "${params.outdir}/Kallisto_quant", mode: 'copy'
 
     input:
-    path(transcripts)
-    path(reads)
+    path transcripts
+    tuple val(sample_id), path(reads)
 
     output:
     path "${sample_id}_kallisto_output/*"
@@ -442,7 +443,10 @@ workflow {
     gtf_ch = Channel.fromPath(params.gtf, checkIfExists: true)
     star_index_ch = Channel.fromPath(params.star_index, checkIfExists: true)
     //kraken_db_ch = Channel.fromPath(params.kraken_db, checkIfExists: true)
-    
+    kallisto_index_ch = Channel.fromPath(params.kallisto_index, checkIfExists: true)
+    salmon_quant_index_ch = Channel.fromPath(params.salmon_quant_index, checkIfExists: true)    
+
+
     // FastQC on raw reads
     FASTQC(reads_ch)
     
@@ -450,22 +454,13 @@ workflow {
     FASTP(reads_ch)
     
     // UMI extraction
-    UMI_EXTRACT(FASTP.out.trimmed_reads)    
+    //UMI_EXTRACT(FASTP.out.trimmed_reads)    
     
-    // Salmon index
-    SALMON_INDEX(genome_ch)
-
-    // Kallisto index
-    //KALLISTO_INDEX(genome_ch)
-
     // Salmon quantify
-    SALMON(UMI_EXTRACT.out.UMI_extracted_reads, SALMON_INDEX.out.salmon_quant_index)
-
-    // Build STAR index
-    //BUILD_STAR_INDEX(genome_ch, gtf_ch)
+    SALMON(FASTP.out.trimmed_reads, salmon_quant_index_ch)
     
     // Align trimmed reads
-    STAR_ALIGN(star_index_ch, UMI_EXTRACT.out.UMI_extracted_reads)
+    STAR_ALIGN(star_index_ch, FASTP.out.trimmed_reads)
 
     // Convert SAM to BAM
     SAM_TO_BAM(STAR_ALIGN.out.sam)
@@ -486,7 +481,7 @@ workflow {
     QUALIMAP(DEDUP.out.dedup_bam, gtf_ch)
 
     // Kallisto quant
-    //KALLISTO_QUANT(KALLISTO_INDEX.out.transcript_idx, reads_ch)
+    KALLISTO_QUANT(kallisto_index_ch, reads_ch)
     
     // Kracken
     // KRAKEN(reads_ch, kraken_db_ch)
